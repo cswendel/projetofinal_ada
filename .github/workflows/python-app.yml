@@ -22,7 +22,9 @@ jobs:
       - name: Executar Script de Extração
         env:
           OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
-        run: python extract/extract-pipeline.py
+        run: |
+          cd extract
+          python extract-pipeline.py
 
       - name: Salvar CSVs como Artefatos
         uses: actions/upload-artifact@v4

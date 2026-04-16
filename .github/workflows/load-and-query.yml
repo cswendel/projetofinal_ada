@@ -62,7 +62,7 @@ jobs:
         env:
           PGPASSWORD: admin123
         run: |
-          echo "===== TOP 5 FILMES MAIS POPULARES ====="
+          echo "===== CONSULTAS QUERIES ====="
           psql -h localhost -U admin -d movieflix -f db/queries.sql
 
       - name: Verificar contagem das tabelas

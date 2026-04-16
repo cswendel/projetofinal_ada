@@ -1,0 +1,77 @@
+name: Load Data & Run Analytical Queries
+
+on:
+  workflow_dispatch:
+
+jobs:
+  load-and-query:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: movieflix
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: admin123
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar dependências
+        run: pip install -r extract/requirements.txt
+
+      - name: Executar extração e gerar CSVs
+        env:
+          OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
+        run: |
+          cd extract
+          python extract-pipeline.py
+
+      - name: Criar tabelas no Postgres
+        env:
+          PGPASSWORD: admin123
+        run: |
+          psql -h localhost -U admin -d movieflix -f db/init.sql
+
+      - name: Carregar CSVs nas tabelas
+        env:
+          PGPASSWORD: admin123
+        run: |
+          psql -h localhost -U admin -d movieflix \
+            -c "\COPY movies(movie_id,title,year,genre,director) FROM 'extract/movies.csv' DELIMITER ',' CSV HEADER;"
+          psql -h localhost -U admin -d movieflix \
+            -c "\COPY users(user_id,name,email) FROM 'extract/users.csv' DELIMITER ',' CSV HEADER;"
+          psql -h localhost -U admin -d movieflix \
+            -c "\COPY ratings(user_id,movie_id,rating,timestamp) FROM 'extract/ratings.csv' DELIMITER ',' CSV HEADER;"
+
+      - name: Executar queries analíticas
+        env:
+          PGPASSWORD: admin123
+        run: |
+          echo "===== TOP 5 FILMES MAIS POPULARES ====="
+          psql -h localhost -U admin -d movieflix -f db/queries.sql
+
+      - name: Verificar contagem das tabelas
+        env:
+          PGPASSWORD: admin123
+        run: |
+          psql -h localhost -U admin -d movieflix \
+            -c "SELECT 'movies' AS tabela, COUNT(*) FROM movies
+                UNION ALL
+                SELECT 'users', COUNT(*) FROM users
+                UNION ALL
+                SELECT 'ratings', COUNT(*) FROM ratings;"

@@ -1,4 +1,4 @@
--- 1. Top 5 filmes mais avaliados (mais populares)
+-- 1. Top 5 filmes mais avaliados
 SELECT m.title, COUNT(r.movie_id) AS total_avaliacoes
 FROM ratings r
 JOIN movies m ON r.movie_id = m.movie_id
@@ -16,4 +16,3 @@ CROSS JOIN LATERAL unnest(string_to_array(m.genre, ',')) AS genre_name
 GROUP BY genero
 ORDER BY media_avaliacao DESC
 LIMIT 1;
-

@@ -1,10 +1,17 @@
 name: Load Data & Run Analytical Queries
 
 on:
-  workflow_dispatch:
+  workflow_run:
+    workflows: ["MovieFlix Data Extraction"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
 
 jobs:
   load-and-query:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     services:
@@ -26,20 +33,28 @@ jobs:
       - name: Checkout do código
         uses: actions/checkout@v4
 
-      - name: Configurar Python
-        uses: actions/setup-python@v4
+      # ✅ BAIXAR O ARTEFATO GERADO NO OUTRO WORKFLOW
+      - name: Baixar CSVs do artefato (do workflow de extração)
+        uses: actions/download-artifact@v4
         with:
-          python-version: '3.10'
+          name: movieflix-data
+          path: extract
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Instalar dependências
-        run: pip install -r extract/requirements.txt
-
-      - name: Executar extração e gerar CSVs
-        env:
-          OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
+      # ✅ Debug: conferir que os arquivos vieram do artifact
+      - name: Debug - listar e mostrar começo dos CSVs
         run: |
-          cd extract
-          python extract-pipeline.py
+          echo "==== ls extract ===="
+          ls -lah extract
+          echo "==== head movies.csv ===="
+          head -n 5 extract/movies.csv
+          echo "==== head users.csv ===="
+          head -n 5 extract/users.csv
+          echo "==== head ratings.csv ===="
+          head -n 5 extract/ratings.csv
+          echo "==== sha256 ===="
+          sha256sum extract/movies.csv extract/users.csv extract/ratings.csv
 
       - name: Criar tabelas no Postgres
         env:
@@ -58,6 +73,30 @@ jobs:
           psql -h localhost -U admin -d movieflix \
             -c "\COPY ratings(user_id,movie_id,rating,timestamp) FROM 'extract/ratings.csv' DELIMITER ',' CSV HEADER;"
 
+      # ✅ IMPRIMIR TUDO QUE FOI INSERIDO (para auditoria)
+      - name: Debug - imprimir dados carregados (tabelas completas)
+        env:
+          PGPASSWORD: admin123
+        run: |
+          echo "===== MOVIES (ALL) ====="
+          psql -h localhost -U admin -d movieflix -c "SELECT * FROM movies ORDER BY movie_id;"
+          echo "===== USERS (ALL) ====="
+          psql -h localhost -U admin -d movieflix -c "SELECT * FROM users ORDER BY user_id;"
+          echo "===== RATINGS (ALL) ====="
+          psql -h localhost -U admin -d movieflix -c "SELECT * FROM ratings ORDER BY user_id, movie_id;"
+
+      # ✅ Sanity checks que explicam qualquer divergência de top
+      - name: Debug - checagens de consistência
+        env:
+          PGPASSWORD: admin123
+        run: |
+          echo "===== Maior qtd de avaliacoes por filme (sem join) ====="
+          psql -h localhost -U admin -d movieflix -c "SELECT MAX(cnt) AS maior_qtd FROM (SELECT movie_id, COUNT(*) cnt FROM ratings GROUP BY movie_id) t;"
+          echo "===== Top 10 movie_id por contagem (sem join) ====="
+          psql -h localhost -U admin -d movieflix -c "SELECT movie_id, COUNT(*) total FROM ratings GROUP BY movie_id ORDER BY total DESC, movie_id LIMIT 10;"
+          echo "===== Ratings orfaos (movie_id sem match em movies) ====="
+          psql -h localhost -U admin -d movieflix -c \"SELECT COUNT(*) AS ratings_orfaos FROM ratings r LEFT JOIN movies m ON m.movie_id=r.movie_id WHERE m.movie_id IS NULL;\"
+
       - name: Executar queries analíticas
         env:
           PGPASSWORD: admin123
@@ -75,3 +114,4 @@ jobs:
                 SELECT 'users', COUNT(*) FROM users
                 UNION ALL
                 SELECT 'ratings', COUNT(*) FROM ratings;"
+``

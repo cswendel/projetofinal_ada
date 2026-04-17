@@ -73,6 +73,17 @@ jobs:
           psql -h localhost -U admin -d movieflix \
             -c "\COPY ratings(user_id,movie_id,rating,timestamp) FROM 'extract/ratings.csv' DELIMITER ',' CSV HEADER;"
 
+      - name: Debug - imprimir dados carregados (tabelas completas)
+        env:
+          PGPASSWORD: admin123
+        run: |
+          echo "===== MOVIES (ALL) ====="
+          psql -h localhost -U admin -d movieflix -c "SELECT * FROM movies ORDER BY movie_id;"
+          echo "===== USERS (ALL) ====="
+          psql -h localhost -U admin -d movieflix -c "SELECT * FROM users ORDER BY user_id;"
+          echo "===== RATINGS (ALL) ====="
+          psql -h localhost -U admin -d movieflix -c "SELECT * FROM ratings ORDER BY user_id, movie_id;"
+          
       - name: Executar queries analíticas
         env:
           PGPASSWORD: admin123
